@@ -15,6 +15,7 @@ The model contains 6 state values as follows:
 * v - velocity of the car
 * cte - cross-track error of the car
 * epsi - orientation error of the car
+
 These state parameters are inputs to the MPC calculations, as per the `MPC::Solve()` function in `MPC.cpp`.
 
 The MPC calculation attempts to determine the following:
@@ -52,6 +53,7 @@ Considerable parameter tuning was done, to get to a stable high-speed solution.
 * A weight (weighting of acceleration error)
 * DeltaDot weight (weighting of error in rate of steering angle change)
 * ADot weight (weighting of error in rate of acceleration change)
+
 Each weighting determines how much a variation in the given parameter (from the ideal path) contributes to the cost function being minimised to find the selected path.
 
 Initial best-guesses and iterative testing gave settings of:
@@ -92,6 +94,7 @@ To allow for faster speeds on the straight sections, the code was modified to in
 This introduced two new parameters for tuning:
 * minimum velocity - the minimum speed for the car
 * maximum curve - the maximum curvature estimate allowed for the proportional calculation
+
 These parameters are really more like contraints on the proportional velocity calculation, as the minimum velocity specifies a lower bound for the reference velocity (using the previous parameter tuning, we know that the car can go around the track at least this fast) and the maximum curve specifies a bound above which the reference speed will always be set to the minimum (i.e. once curvature reaches a certain level, the target speed is always reduced to the minimum level). 
 
 An example of the MPC performance with proportional reference velocity control can be seen at: [100mph straight, variable speed](https://youtu.be/meqTQ0j41Eg).  This example uses a minimum velocity setting of 80mph and maximum curvature setting of 30.0.
