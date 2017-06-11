@@ -7,6 +7,25 @@ This project is an implementation of an MPC (model predictive control) controlle
 
 The MPC implementation attempts to drive a car around the "lake track" circuit, choosing steering and accelerator inputs by fitting an optimised projected path to a desired reference path.
 
+## Model
+The model contains 6 state values as follows:
+* x - x co-ordinate of the car
+* y - y co-ordinate of the car
+* psi - orientation of the car
+* v - velocity of the car
+* cte - cross-track error of the car
+* epsi - orientation error of the car
+These state parameters are inputs to the MPC calculations, as per the `MPC::Solve()` function in `MPC.cpp`.
+
+The MPC calculation attempts to determine the following:
+* delta - the best steering angle at the current time-step (after allowing for latency)
+* a - the best throttle setting at the current time-step (after allowing for latency)
+
+These values are determined by the solver, which uses the bicycle motional model to determine settings which create a path which best fits to the polynominal describing the desired path.  The cost function for this optimisation problem attempts to minimise the total cost of a variety of weighted inputs (see `MPC::FG_eval` and below).  
+
+## Timestep Choices
+The MPC has parameters for how many time steps to look forward, `N`, and the duration of each time step, `dt`.  The class examples given were `N=25` and `dt=0.05`.  However, large values of N make the computation time-consuming and from the outset a lower value (`N=10`) was chosen.  Considering the need to consider the immediate path of the car, `dt=0.1` was chosen, giving a look-ahead of 1 second.  These parameters were chosen largely on back-of-an-envelope reckoning, but appear to work well in practice.
+
 ## Implementation Approach
 The initial approach was to implement a basic MPC controller, using fixed reference parameters for cte (cross track error), psi (direction) error and velocity.  In particular, for the initial implementation the velocity was set to a fixed value.  This means that the MPC would attempt to drive the car around the track at this fixed velocity.
 
