@@ -6,8 +6,8 @@
 using CppAD::AD;
 
 // DONE: Set the timestep length and duration
-size_t N = 10; //25;		// 25 steps to look ahead - may need tuning
-double dt = 0.1; //0.05;	// 0.05s per time step - may need tuning
+size_t N = 10; 		// Can tune this, but 10 steps at 0.1s per step is one second of look ahead
+double dt = 0.1; 	// That's a reasonable balance between enough look ahead to drive well, against keeping computation time down
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -21,21 +21,22 @@ double dt = 0.1; //0.05;	// 0.05s per time step - may need tuning
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
-// Desired objectives (no errors)
-double ref_cte = 0;
-double ref_epsi = 0;
-double ref_v = 80;			// objective velocity - mph!  100?
+// Desired objectives
+double ref_cte = 0;			// ref_cte=0 means we would like to have zero cross-track error, compared with the waypoints path
+double ref_epsi = 0;		// ref_epsi=0 means we would like to have zero directional error, compared with the waypoints path
+double ref_v = 90;			// reference velocity - prior to setting up to seek a velocity proportional to the curvature of the waypoints path, this was the desired speed
+							// in the final version, ref_v is just used as an initial velocity target, before the proportional calc takes over
 
-// Weights
-double weight_cte = 0.5;	// can tune these...
-double weight_epsi = 10.0;
-double weight_v = 1.0;
-double weight_delta = 2000.0;
-double weight_a = 10;
-double weight_deltadot = 30.0;
-double weight_adot = 1.0;
+// Weights - can tune all of these values to change the MPC behaviour
+double weight_cte = 0.5;		// weighting of cross-track error
+double weight_epsi = 10.0;		// weighting of psi error
+double weight_v = 1.0;			// weighting of velocity
+double weight_delta = 4000.0;	// weighting of steering delta - this ends up being high, as this is important to the MPC performance on the lake track
+double weight_a = 10;			// weighting of acceleration
+double weight_deltadot = 100.0; // weighting of steering delta rate of change
+double weight_adot = 1.0;		// weighting of acceleration rate of change
 
-// Offsets in the vars vector
+// Offsets in the vars vector - just used to make it easy to locate values in that array/vector
 size_t x_start = 0;
 size_t y_start = x_start + N;
 size_t psi_start = y_start + N;
@@ -45,21 +46,82 @@ size_t epsi_start = cte_start + N;
 size_t delta_start = epsi_start + N;
 size_t a_start = delta_start + N - 1;
 
+// curvature estimate parameters - used to tune how the target speed is calculated
+double min_curve = 100.0;		// just use this to hold the minimum curvature found so far - was useful to echo to std::cout, to see what's happening
+double max_curve = 0.0;			// similar use for maximum curvature found so far
+double min_prop_v = 80;			// don't go below this speed when picking a proportional speed - actually select a speed from this min/max range
+double max_prop_v = 200;		// don't go above this speed when picking a proportional speed
+double max_allow_curve = 40;	// max curve allowed before hitting the brakes to slow the car
+
 class FG_eval {
- public:
+
+private:
+	// Evaluate a polynomial - simply borrowed from main.cpp
+	double polyeval(Eigen::VectorXd coeffs, double x) {
+	  double result = 0.0;
+	  for (int i = 0; i < coeffs.size(); i++) {
+	    result += coeffs[i] * pow(x, i);
+	  }
+	  return result;
+	}
+
+public:
   // Fitted polynomial coefficients
   Eigen::VectorXd coeffs;
   FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   void operator()(ADvector& fg, const ADvector& vars) {
-    // TODO: implement MPC
+    // DONE: implement MPC
     // fg a vector of constraints, x is a vector of constraints.
     // NOTE: You'll probably go back and forth between this function and
     // the Solver function below.
 
 	//std::cout << "Setting cost..." << std::endl;
 	//std::cout << "vars.size() = " << vars.size() << std::endl;
+
+	std::cout << "Coeffs size: " << coeffs.size() << std::endl;
+	for (int i =0; i < coeffs.size(); i++) {
+		std::cout << coeffs[i] << " ";
+	}
+	std::cout << "" << std::endl;
+	// Assuming 2.5 as the polyinc and 25 poly points, get the difference between the first and last polynominal points
+	// Then use this to make a rough estimate of the curvature of the desired path
+	// Won't be accurate if there's a double-curve in the path, but in most cases the curve is fairly simple/quadratic
+	double const poly_inc = 2.5;
+	double const poly_points = 25;								// using the same increment and number of points as in the main.cpp display code -
+																// so easy to relate to what's appearing in the simulator
+	double near_y = polyeval(coeffs, poly_inc);					// y co-ord of nearest point
+	double far_y = polyeval(coeffs, poly_inc * poly_points);	// y co-ord of furthest point
+	double curve_est = std::abs(far_y - near_y);				// difference between those two points, as a rough estimate of the curvature of the path
+
+	// Save the min/max, for display - not used in the calculation, but useful to echo to std::cout when tuning the proportional speed calc
+	if (curve_est < min_curve) {
+		min_curve = curve_est;
+	}
+	if (curve_est > max_curve) {
+		max_curve = curve_est;
+	}
+
+	// Calculate a Ref_v based on the curvature of the desired track
+	double prop_v = ref_v;
+	double curve = 0.0;
+	if (curve_est > max_allow_curve) {
+		// penalise high curvature values - will mean that the reference speed drops to the min_prop_v value, saving the car from spearing off on sharp corners
+		curve = max_allow_curve;
+	}
+	else {
+		curve = curve_est;
+	}
+	if (prop_v > min_prop_v) {
+		// the velocity is set at a level above the minimum threshold, so use the proportional velocity setting - won't need to bother at less than this speed
+		// otherwise pick a reference velocity suitable for the upcoming curve
+		prop_v = (max_prop_v - min_prop_v) * (max_allow_curve - curve) / max_allow_curve;		// pick a proportion of the min-to-max speed range
+		prop_v += min_prop_v;																	// add on the min speed, to put this in the right range
+	}
+
+	// Echo the curvature stuff to std::cout - just helps with debugging and tuning...
+	std::cout << "\nCurvature estimate: " << curve_est << ", speed set to: " << prop_v << ", min curve=" << min_curve << ", max curve=" << max_curve << "\n" << std::endl;
 
 	fg[0] = 0;			// This is the cost function
 
@@ -69,7 +131,7 @@ class FG_eval {
 	{
 		fg[0] += weight_cte * CppAD::pow(vars[cte_start + i] - ref_cte, 2);
 		fg[0] += weight_epsi * CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
-		fg[0] += weight_v * CppAD::pow(vars[v_start + i] - ref_v, 2);
+		fg[0] += weight_v * CppAD::pow(vars[v_start + i] - prop_v, 2);				// replaced ref_v with the prop_v calculated above
 	}
 	for (int i = 0; i < N - 1; i++)
 	{
@@ -82,8 +144,6 @@ class FG_eval {
 		fg[0] += weight_adot  * CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
 	}
 
-	//std::cout << "fg[0] set..." << std::endl;
-
 	// Initial constraints, noting that fg[0] is the cost and so all of these are bumped along by one in the fg[] vector
 	fg[1 + x_start] = vars[x_start];
 	fg[1 + y_start] = vars[y_start];
@@ -92,9 +152,7 @@ class FG_eval {
 	fg[1 + cte_start] = vars[cte_start];
 	fg[1 + epsi_start] = vars[epsi_start];
 
-	//std::cout << "Initial constraints set..." << std::endl;
-
-    // The rest of the constraints
+	// The rest of the constraints
     for (int i = 0; i < N - 1; i++) {
       // The state at time t+1 .
       AD<double> x1 = vars[x_start + i + 1];
@@ -116,12 +174,12 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + i];
       AD<double> a0 = vars[a_start + i];
 
-      // Use the polynominal coefficients here
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * x0 * x0 + coeffs[3] * x0 * x0 * x0;		// changed - can also use pow() here
-      AD<double> psides0 = CppAD::atan(3 * coeffs[3] * x0 * x0 + 2 * coeffs[2] * x0 + coeffs[1]);		// changed - can also use pow() here
+      // Use the polynominal coefficients here, using all coefficients to calc initial values
+      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * x0 * x0 + coeffs[3] * x0 * x0 * x0;		// changed from given class calc - can also use pow() here
+      AD<double> psides0 = CppAD::atan(3 * coeffs[3] * x0 * x0 + 2 * coeffs[2] * x0 + coeffs[1]);		// changed from given class calc - can also use pow() here
 
       // Here's `x` to get you started.
-      // The idea here is to constraint this value to be 0.
+      // The idea here is to constrain this value to be 0.
       //
       // Recall the equations for the model:
       // x_[t+1] = x[t] + v[t] * cos(psi[t]) * dt
@@ -137,11 +195,9 @@ class FG_eval {
       fg[2 + cte_start + i] =
           cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));
       fg[2 + epsi_start + i] =
-          epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);					// now " - v0" - was " + v0" in quiz form
+          epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
 
     }
-
-    //std::cout << "Contraints set..." << std::endl;
 
   }
 };
@@ -192,15 +248,17 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs, double 
   // The upper and lower limits of delta are set to -25 and 25
   // degrees (values in radians).
   // NOTE: Feel free to change this to something else.
+  // This represents the maximum steering angle range for the car
   for (int i = delta_start; i < a_start; i++) {
-	vars_lowerbound[i] = -0.436332; // * Lf;
-	vars_upperbound[i] = 0.436332; // * Lf;
+	vars_lowerbound[i] = -0.436332;					// could use the deg3rad() function here, but easy to just use constants
+	vars_upperbound[i] = 0.436332;
   }
 
-  // Acceleration/decceleration upper and lower limits.
+  // Acceleration/deceleration upper and lower limits.
   // NOTE: Feel free to change this to something else.
+  // Represents maximum acceleration and deceleration of the car - -1.0 to 1.0 seems to be the max range, setting wider doesn't seem to make a difference...
   for (int i = a_start; i < n_vars; i++) {
-		vars_lowerbound[i] = -1.0;									// swapped values with the acceleration limits in the Q&A video?
+		vars_lowerbound[i] = -1.0;
 	    vars_upperbound[i] = 1.0;
   }
 
@@ -228,8 +286,6 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs, double 
   constraints_upperbound[epsi_start] = epsi;
 
 
-  //std::cout << "All constraints set..." << std::endl;
-
   // object that computes objective and constraints
   FG_eval fg_eval(coeffs);
 
@@ -250,8 +306,6 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs, double 
   // NOTE: Currently the solver has a maximum time limit of 0.5 seconds.
   // Change this as you see fit.
   options += "Numeric max_cpu_time          0.5\n";			// after this period, the solver will return whatever solution it has - consider the N value...
-
-  //std::cout << "ipopt solver start.." << std::endl;
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -276,9 +330,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs, double 
 
   vector<double> result;
 
-  // account for lag, by moving up the solution path
-  //std::cout << "Accounting for lag of: " << lag_ms << std::endl;
-  int index_shift = std::min(int(std::round(lag_ms/(1000 * dt))), int(N-1)); // + 1;
+  // account for lag, by moving up the solution path - i.e. use the steering angle and throttle from one of the future time-step states of the solution
+  int index_shift = std::min(int(std::round(lag_ms/(1000 * dt))), int(N-1));
   std::cout << "Accounting for lag of: " << lag_ms << " by looking ahead " << index_shift << " steps" << std::endl;
 
   result.push_back(solution.x[delta_start + index_shift]);			// actuations to use for the next timestep
@@ -286,7 +339,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs, double 
 
   for (int i = 0; i < N; i++)
   {
-	  result.push_back(solution.x[x_start + i + 1]);	// future MPC locations (green line!)
+	  result.push_back(solution.x[x_start + i + 1]);	// future MPC locations (used to draw the green line)
 	  result.push_back(solution.x[y_start + i + 1]);
   }
 

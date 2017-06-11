@@ -97,7 +97,7 @@ int main() {
 
           for (int i=0; i < ptsx.size(); i++)
           {
-        	  // Transform points to origin
+        	  // Transform points to origin, makes the maths easier from then on
 
         	  // Translate to origin
         	  double shift_x = ptsx[i] - px;
@@ -109,10 +109,9 @@ int main() {
 
           }
 
-          // Some pointer magic stuff to create a VectorXd suitable for polyfit
+          // Some pointer magic stuff to create a VectorXd suitable for polyfit()
           double* ptrx = &ptsx[0];
           Eigen::Map<Eigen::VectorXd> ptsx_transform(ptrx, 6);			// creates vector of transformed points x-co-ords
-
           double* ptry = &ptsy[0];
           Eigen::Map<Eigen::VectorXd> ptsy_transform(ptry, 6);			// creates vector of transformed points y-co-ords
 
@@ -121,9 +120,9 @@ int main() {
           // Calculate the cte and epsi values - some rough approximations going on here...
           double cte = polyeval(coeffs, 0);
           double epsi = -atan(coeffs[1]);																// simple version - as psi, px both set to zero
-          //double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[2] + 3 * coeffs[3] * pow(px, 2));		// complex version (most correct)
+          //double epsi = psi - atan(coeffs[1] + 2 * px * coeffs[2] + 3 * coeffs[3] * pow(px, 2));		// complex version (correct, but note that psi, px both zero)
 
-          double steer_value = j[1]["steering_angle"];		// can get these from the simulator - could use to predict a future location maybe?
+          double steer_value = j[1]["steering_angle"];		// can get the current values from the simulator - could use to predict a future location maybe?
           double throttle_value = j[1]["throttle"];
 
           // Create a vector of the current state
@@ -131,28 +130,20 @@ int main() {
           state << 0,0,0,v,cte,epsi;
 
           /*
-          * TODO: Calculate steering angle and throttle using MPC.
+          * DONE: Calculate steering angle and throttle using MPC.
           *
           * Both are in between [-1, 1].
           *
           */
-          //double steer_value;
-          //double throttle_value;
-
-          //std::cout << "Solving..." << std::endl;
 
           auto vars = mpc.Solve(state, coeffs, 100);
 
-          //std::cout << "Done solving..." << std::endl;
-
           //Display the waypoints/reference line
-          //vector<double> next_x_vals;
-          //vector<double> next_y_vals;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
           // Create vector of waypoints to display in the simulator
-          // Do this by evaluating the polynonial over a number of steps
+          // Do this by evaluating the polynomial over a number of steps
           vector<double> next_x_vals;
           vector<double> next_y_vals;
           double poly_inc = 2.5;
@@ -164,16 +155,14 @@ int main() {
           }
 
           //Display the MPC predicted trajectory
-          //vector<double> mpc_x_vals;
-          //vector<double> mpc_y_vals;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line          vector<double> mpc_x_vals;
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
-          //mpc_x_vals.push_back(vars[vars.size()-2]);					// points near car at end of MPC train
-          //mpc_y_vals.push_back(vars[vars.size()-1]);					// can add these, but doesn't look so nice...
 
+          //mpc_x_vals.push_back(vars[vars.size()-2]);					// points near car at end of MPC train
+          //mpc_y_vals.push_back(vars[vars.size()-1]);					// can add these, but doesn't look so nice when the green line sticks out the back of the car...
           for (int i = 2; i < vars.size() - 2; i++)
           {
         	  if (i%2 == 0)
@@ -186,15 +175,12 @@ int main() {
         	  }
           }
 
-          //throttle_value = 5.0;			// messing about...  ;-)
-
-          double Lf = 2.67;					// Magic Lf value...
+          double Lf = 2.67;					// Magic Lf value, taking the given value...
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
 
-          //steer_value = vars[0]/(deg2rad(25)*Lf);
           steer_value = -1.0 * vars[0]/deg2rad(25);
           throttle_value = vars[1];
 
