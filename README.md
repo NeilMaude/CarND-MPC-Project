@@ -24,6 +24,11 @@ The MPC calculation attempts to determine the following:
 
 These values are determined by the solver, which uses the bicycle motional model to determine settings which create a path which best fits to the polynominal describing the desired path.  The cost function for this optimisation problem attempts to minimise the total cost of a variety of weighted inputs (see `MPC::FG_eval` and below).  
 
+State update for the model is implemented in the FG_eval, which calculates the predicted position for time t+1, based on the prediction for time t (see `MPC.cpp`, within the `for` loop starting at line 158, with the state update being done at line 193 onwards).
+
+### Waypoints pre-processing
+The waypoint x/y co-ordinates are provided in global co-ordinates.  These are transformed to co-ordinates relative to the car, by subtracting out the car x/y position and performing the standard vector transformation to vehicle co-ordinates (as per `main.cpp` lines 104-110).  This greatly simplifies calculations throughout the remainder of the project, as all points are relative to the vehicle.
+
 ## Timestep Choices
 The MPC has parameters for how many time steps to look forward, `N`, and the duration of each time step, `dt`.  The class examples given were `N=25` and `dt=0.05`.  However, large values of N make the computation time-consuming and from the outset a lower value (`N=10`) was chosen.  Considering the need to consider the immediate path of the car, `dt=0.1` was chosen, giving a look-ahead of 1 second.  These parameters were chosen largely on back-of-an-envelope reckoning, but appear to work well in practice.
 
@@ -101,11 +106,16 @@ An example of the MPC performance with proportional reference velocity control c
 
 Further tuning was done by setting the maximum curvature allowed to 40.0, which provided a (reasonably!) safe lap with a maximum observed speed of 103mph.  This can be seen here: [103mph, variable speed](https://youtu.be/q0VCIWiL32s).
 
-The above is the current state of the project, as checked-in to this repo.
-
 (Note that at certain times - especially at the end of the right-left section on the lake-shore - the car is taking a fairly wide line.  However, this is at extreme speeds!)
 
 Further tuning may allow even faster speeds, potentially by addressing some of the over-braking for some corners - the car is dropping below the previous optimised corner speed from the 90mph fixed-speed lap.  
+
+## Updated submission
+The final version of the code has been modified to run at a reduced speed: [30-50mph proportional speed](https://youtu.be/JWHoJ_oWeZE).
+
+This is presented as a "safe" version, as the extreme speed (103mph) was deemed to be running too close to the road edge to meet the Udacity marking rubric.
+
+The proportional speed control is not necessary at this reduced speed, but has been implemented as a demonstration - the car will still slow in anticipation of a sharp corner, even though appropriate MPC parameter choices would easily allow this speed to be achieved without slowing for corners.
 
 ## Future Enhancements
 An obvious enhancement to this project would be to implement an INI file mechanism to store the multitude of parameters.  This would remove the painful process of re-compiling the project for each test run.
