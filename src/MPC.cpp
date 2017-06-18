@@ -24,16 +24,18 @@ const double Lf = 2.67;
 // Desired objectives
 double ref_cte = 0;			// ref_cte=0 means we would like to have zero cross-track error, compared with the waypoints path
 double ref_epsi = 0;		// ref_epsi=0 means we would like to have zero directional error, compared with the waypoints path
-double ref_v = 90;			// reference velocity - prior to setting up to seek a velocity proportional to the curvature of the waypoints path, this was the desired speed
-							// in the final version, ref_v is just used as an initial velocity target, before the proportional calc takes over
+double ref_v = 40 * 0.44704;	// reference velocity - prior to setting up to seek a velocity proportional to the curvature of the waypoints path,
+								// this was the desired speed
+								// in the proportional version, ref_v is just used as an initial velocity target, before the proportional calc takes over
+								// The multiplication is a conversion to m/s
 
 // Weights - can tune all of these values to change the MPC behaviour
-double weight_cte = 0.5;		// weighting of cross-track error
+double weight_cte = 2.0;		// weighting of cross-track error
 double weight_epsi = 10.0;		// weighting of psi error
-double weight_v = 1.0;			// weighting of velocity
-double weight_delta = 4000.0;	// weighting of steering delta - this ends up being high, as this is important to the MPC performance on the lake track
+double weight_v = 1.0 ;			// weighting of velocity
+double weight_delta = 250.0;	// weighting of steering delta - this ends up being high, as this is important to the MPC performance on the lake track
 double weight_a = 10;			// weighting of acceleration
-double weight_deltadot = 100.0; // weighting of steering delta rate of change
+double weight_deltadot = 30.0; // weighting of steering delta rate of change
 double weight_adot = 1.0;		// weighting of acceleration rate of change
 
 // Offsets in the vars vector - just used to make it easy to locate values in that array/vector
@@ -49,8 +51,8 @@ size_t a_start = delta_start + N - 1;
 // curvature estimate parameters - used to tune how the target speed is calculated
 double min_curve = 100.0;		// just use this to hold the minimum curvature found so far - was useful to echo to std::cout, to see what's happening
 double max_curve = 0.0;			// similar use for maximum curvature found so far
-double min_prop_v = 80;			// don't go below this speed when picking a proportional speed - actually select a speed from this min/max range
-double max_prop_v = 200;		// don't go above this speed when picking a proportional speed
+double min_prop_v = 30 * 0.44704;		// don't go below this speed when picking a proportional speed - actually select a speed from this min/max range
+double max_prop_v = 50 * 0.44704;		// don't go above this speed when picking a proportional speed
 double max_allow_curve = 40;	// max curve allowed before hitting the brakes to slow the car
 
 class FG_eval {

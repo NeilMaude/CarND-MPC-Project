@@ -92,6 +92,8 @@ int main() {
           double psi = j[1]["psi"];								// orientation of the vehicle in radians: 0, 2pi = east, pi/2 = north, pi = west, 3pi/2 = south
           double v = j[1]["speed"];								// velocity in mph
 
+          v = v * 0.44704;										// velocity in m/s from now on
+
           // Let's echo some data to the console, so we can see what's happening
           std::cout << "Vehicle state : " << px << "," << py << "," << psi << "," << v << std::endl;
 
